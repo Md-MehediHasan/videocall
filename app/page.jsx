@@ -83,7 +83,7 @@ export default function Page() {
   // -------------------------------
   function pollSignals() {
     setInterval(async () => {
-      const res = await fetch(`/api/signal?roomId=${roomId}`);
+      const res = await fetch(`/api/signal?roomId=${roomId}&pearId=${pearId.current}`);
       const messages = await res.json();
 
       for (const msg of messages) {
