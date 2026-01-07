@@ -12,11 +12,12 @@ export default function Page() {
   const peerId = useRef(null);
 
   const [ready, setReady] = useState(false);
-  const [callState, setCallState] = useState("idle"); // idle | confirming | in-call | ended
-  const [swapped, setSwapped] = useState(false); // for video swap
+  const [callState, setCallState] = useState("idle"); // idle | confirming | in-call | incoming | ended
+  const [incomingCaller, setIncomingCaller] = useState(null);
+  const [swapped, setSwapped] = useState(false);
 
   // -------------------------------
-  // Initialize peer ID
+  // Initialize peerId
   // -------------------------------
   useEffect(() => {
     peerId.current = crypto.randomUUID();
@@ -24,7 +25,7 @@ export default function Page() {
   }, []);
 
   // -------------------------------
-  // Initialize RTCPeerConnection (no media yet)
+  // Initialize RTCPeerConnection
   // -------------------------------
   useEffect(() => {
     if (!ready) return;
@@ -80,13 +81,11 @@ export default function Page() {
         if (msg.senderId === peerId.current) continue;
 
         if (msg.type === "offer") {
-          if (pc.current.signalingState !== "stable") continue;
-          setCallState("in-call");
+          // Prevent multiple calls
+          if (callState === "in-call") continue;
 
-          await pc.current.setRemoteDescription(msg.data);
-          const answer = await pc.current.createAnswer();
-          await pc.current.setLocalDescription(answer);
-          sendSignal("answer", answer);
+          setIncomingCaller(msg.senderId);
+          setCallState("incoming");
         }
 
         if (msg.type === "answer") {
@@ -104,7 +103,7 @@ export default function Page() {
   }
 
   // -------------------------------
-  // Call UI handlers
+  // Call handlers
   // -------------------------------
   function startCall() {
     setCallState("confirming");
@@ -114,7 +113,6 @@ export default function Page() {
     setCallState("in-call");
 
     try {
-      // Access camera/mic only now
       localStream.current = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
@@ -122,7 +120,6 @@ export default function Page() {
 
       if (localVideo.current) localVideo.current.srcObject = localStream.current;
 
-      // Add tracks to peer connection
       localStream.current.getTracks().forEach(track =>
         pc.current.addTrack(track, localStream.current)
       );
@@ -134,6 +131,39 @@ export default function Page() {
       console.error("Failed to access camera/mic:", err);
       setCallState("idle");
     }
+  }
+
+  async function acceptCall() {
+    setCallState("in-call");
+
+    try {
+      localStream.current = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      if (localVideo.current) localVideo.current.srcObject = localStream.current;
+
+      localStream.current.getTracks().forEach(track =>
+        pc.current.addTrack(track, localStream.current)
+      );
+
+      await pc.current.setRemoteDescription(incomingCaller.offer);
+      const answer = await pc.current.createAnswer();
+      await pc.current.setLocalDescription(answer);
+      sendSignal("answer", answer);
+
+      setIncomingCaller(null);
+    } catch (err) {
+      console.error("Failed to accept call:", err);
+      setCallState("idle");
+    }
+  }
+
+  function rejectCall() {
+    sendSignal("reject", { from: incomingCaller });
+    setIncomingCaller(null);
+    setCallState("idle");
   }
 
   function endCall() {
@@ -181,10 +211,26 @@ export default function Page() {
         </div>
       )}
 
+      {/* INCOMING CALL POPUP */}
+      {callState === "incoming" && (
+        <div style={styles.overlay}>
+          <div style={styles.modal}>
+            <h3>Incoming call from {incomingCaller}</h3>
+            <div style={{ marginTop: 20 }}>
+              <button style={styles.acceptBtn} onClick={acceptCall}>
+                ✅ Accept
+              </button>
+              <button style={styles.rejectBtn} onClick={rejectCall}>
+                ❌ Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* IN CALL UI */}
       {callState === "in-call" && (
         <div style={styles.callContainer}>
-          {/* Swap videos if needed */}
           {swapped ? (
             <>
               <video ref={localVideo} autoPlay muted playsInline style={styles.remoteVideo} />
