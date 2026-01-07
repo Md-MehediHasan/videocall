@@ -7,7 +7,7 @@ export async function GET(req) {
   const roomId = searchParams.get("roomId")
   const pearId= searchParams.get("pearId")
   if (!signals[roomId]) signals[roomId] = [];
-  const targetSignals= signals[roomId].filter(item=>item.senderId! =pearId)
+  const targetSignals= signals[roomId].filter(item=>item.senderId!=pearId)
   return new Response(JSON.stringify(signals[roomId]));
 }
 
