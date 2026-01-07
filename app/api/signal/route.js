@@ -10,10 +10,20 @@ export async function GET(req) {
 
 export async function POST(req) {
   const body = await req.json();
-  const { roomId, type, data, senderId } = body;
+  const { roomId, type, data, senderId, remove } = body;
   if (!signals[roomId]) signals[roomId] = [];
 
-  // Only one active call: remove old offers/answers
+  if (remove) {
+    signals[roomId] = signals[roomId].filter(msg => {
+      if (msg.type !== type) return true;
+      if (msg.senderId !== senderId) return true;
+      if (type === "ice" && msg.data !== data) return true;
+      return false;
+    });
+    return new Response(JSON.stringify({ ok: true }));
+  }
+
+  // Only one active offer at a time
   if (type === "offer") signals[roomId] = signals[roomId].filter(msg => msg.type !== "offer");
 
   signals[roomId].push({ type, data, senderId });

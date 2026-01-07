@@ -34,15 +34,13 @@ export default function Page() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    // Remote track
     pc.current.ontrack = (event) => {
       if (remoteVideo.current) {
         remoteVideo.current.srcObject = event.streams[0];
-        remoteVideo.current.play().catch(() => console.log("Remote autoplay blocked"));
+        remoteVideo.current.play().catch(() => {});
       }
     };
 
-    // ICE candidates
     pc.current.onicecandidate = (event) => {
       if (event.candidate) sendSignal("ice", event.candidate);
     };
@@ -66,6 +64,23 @@ export default function Page() {
     });
   }
 
+  async function removeSignal(type, senderId, data) {
+    await fetch("/api/signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roomId,
+        type,
+        senderId,
+        data,
+        remove: true,
+      }),
+    });
+  }
+
+  // -------------------------------
+  // Polling
+  // -------------------------------
   function pollSignals() {
     setInterval(async () => {
       const res = await fetch(`/api/signal?roomId=${roomId}`);
@@ -75,20 +90,27 @@ export default function Page() {
         if (msg.senderId === peerId.current) continue;
 
         if (msg.type === "offer") {
-          if (callState === "in-call") continue; // prevent multiple
+          if (callState === "in-call" || callState === "incoming") continue;
           setIncomingCaller({ id: msg.senderId, offer: msg.data });
           setCallState("incoming");
+
+          // remove offer after processing
+          removeSignal("offer", msg.senderId);
         }
 
         if (msg.type === "answer") {
           if (pc.current.signalingState !== "have-local-offer") continue;
           await pc.current.setRemoteDescription(msg.data);
+
+          // remove answer
+          removeSignal("answer", msg.senderId);
         }
 
         if (msg.type === "ice") {
           try {
             await pc.current.addIceCandidate(msg.data);
           } catch {}
+          removeSignal("ice", msg.senderId, msg.data);
         }
       }
     }, 1000);
@@ -103,61 +125,43 @@ export default function Page() {
 
   async function confirmCall() {
     setCallState("in-call");
+    await startLocalStream();
 
-    try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      if (localVideo.current) localVideo.current.srcObject = localStream.current;
-
-      localStream.current.getTracks().forEach(track =>
-        pc.current.addTrack(track, localStream.current)
-      );
-
-      const offer = await pc.current.createOffer();
-      await pc.current.setLocalDescription(offer);
-      sendSignal("offer", offer);
-    } catch (err) {
-      console.error("Failed to access camera/mic:", err);
-      setCallState("idle");
-    }
+    const offer = await pc.current.createOffer();
+    await pc.current.setLocalDescription(offer);
+    sendSignal("offer", offer);
   }
 
   async function acceptCall() {
     setCallState("in-call");
+    await startLocalStream();
 
-    try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      if (localVideo.current) localVideo.current.srcObject = localStream.current;
-
-      localStream.current.getTracks().forEach(track =>
-        pc.current.addTrack(track, localStream.current)
-      );
-
-      if (incomingCaller?.offer) {
-        await pc.current.setRemoteDescription(incomingCaller.offer);
-        const answer = await pc.current.createAnswer();
-        await pc.current.setLocalDescription(answer);
-        sendSignal("answer", answer);
-      }
-
-      setIncomingCaller(null);
-    } catch (err) {
-      console.error("Failed to accept call:", err);
-      setCallState("idle");
+    if (incomingCaller?.offer) {
+      await pc.current.setRemoteDescription(incomingCaller.offer);
+      const answer = await pc.current.createAnswer();
+      await pc.current.setLocalDescription(answer);
+      sendSignal("answer", answer);
     }
+    setIncomingCaller(null);
   }
 
   function rejectCall() {
     sendSignal("reject", { from: incomingCaller?.id });
     setIncomingCaller(null);
     setCallState("idle");
+  }
+
+  async function startLocalStream() {
+    localStream.current = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+
+    if (localVideo.current) localVideo.current.srcObject = localStream.current;
+
+    localStream.current.getTracks().forEach(track =>
+      pc.current.addTrack(track, localStream.current)
+    );
   }
 
   function endCall() {
