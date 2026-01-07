@@ -93,16 +93,12 @@ export default function Page() {
           if (callState === "in-call" || callState === "incoming") continue;
           setIncomingCaller({ id: msg.senderId, offer: msg.data });
           setCallState("incoming");
-
-          // remove offer after processing
           removeSignal("offer", msg.senderId);
         }
 
         if (msg.type === "answer") {
           if (pc.current.signalingState !== "have-local-offer") continue;
           await pc.current.setRemoteDescription(msg.data);
-
-          // remove answer
           removeSignal("answer", msg.senderId);
         }
 
@@ -111,6 +107,10 @@ export default function Page() {
             await pc.current.addIceCandidate(msg.data);
           } catch {}
           removeSignal("ice", msg.senderId, msg.data);
+        }
+
+        if (msg.type === "end-call") {
+          endCall(false); // false = not sending signal again
         }
       }
     }, 1000);
@@ -164,12 +164,14 @@ export default function Page() {
     );
   }
 
-  function endCall() {
+  function endCall(sendSignalToOther = true) {
     localStream.current?.getTracks().forEach(track => track.stop());
-    pc.current?.close();
+    if (pc.current) pc.current.close();
+
+    if (sendSignalToOther) sendSignal("end-call", {});
+
     setCallState("ended");
     setSwapped(false);
-    window.location.reload();
   }
 
   function swapVideos() {
@@ -183,7 +185,7 @@ export default function Page() {
 
   return (
     <div style={{ padding: 20, fontFamily: "Arial" }}>
-      <h1>WebRTC Video Call</h1>
+      <h1>Professional WebRTC Call</h1>
 
       {/* IDLE UI */}
       {callState === "idle" && (
@@ -245,7 +247,7 @@ export default function Page() {
             <button style={styles.iconBtn} onClick={swapVideos} title="Swap Videos">
               🔄
             </button>
-            <button style={styles.iconBtn} onClick={endCall} title="End Call">
+            <button style={styles.iconBtn} onClick={() => endCall(true)} title="End Call">
               ❌
             </button>
           </div>
@@ -266,82 +268,94 @@ const styles = {
     padding: "10px 20px",
     fontSize: 16,
     cursor: "pointer",
+    borderRadius: 6,
   },
 
   overlay: {
     position: "fixed",
     inset: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 1000,
   },
 
   modal: {
     background: "#fff",
     padding: 30,
-    borderRadius: 8,
+    borderRadius: 12,
     textAlign: "center",
-    width: 300,
+    width: 320,
+    boxShadow: "0px 4px 12px rgba(0,0,0,0.3)",
   },
 
   acceptBtn: {
-    backgroundColor: "green",
+    backgroundColor: "#28a745",
     color: "white",
-    padding: "8px 16px",
-    marginRight: 10,
+    padding: "10px 20px",
+    marginRight: 12,
     cursor: "pointer",
+    borderRadius: 6,
+    fontWeight: "bold",
   },
 
   rejectBtn: {
-    backgroundColor: "gray",
+    backgroundColor: "#dc3545",
     color: "white",
-    padding: "8px 16px",
+    padding: "10px 20px",
     cursor: "pointer",
+    borderRadius: 6,
+    fontWeight: "bold",
   },
 
   callContainer: {
     position: "relative",
     width: "100%",
-    maxWidth: 800,
-    height: 450,
+    maxWidth: 900,
+    height: 500,
     backgroundColor: "#000",
     marginTop: 20,
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    borderRadius: 12,
+    overflow: "hidden",
   },
 
   remoteVideo: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
+    borderRadius: 12,
   },
 
   localVideo: {
     position: "absolute",
-    bottom: 10,
-    right: 10,
-    width: 160,
-    height: 120,
+    bottom: 20,
+    right: 20,
+    width: 180,
+    height: 135,
     border: "2px solid white",
+    borderRadius: 8,
+    objectFit: "cover",
   },
 
   controls: {
     position: "absolute",
-    top: 10,
-    right: 10,
+    top: 20,
+    right: 20,
     display: "flex",
-    gap: 10,
+    gap: 12,
   },
 
   iconBtn: {
     backgroundColor: "rgba(255,255,255,0.3)",
     border: "none",
-    borderRadius: 5,
+    borderRadius: 8,
     color: "white",
-    fontSize: 20,
-    padding: "6px 10px",
+    fontSize: 22,
+    padding: "8px 12px",
     cursor: "pointer",
   },
 };

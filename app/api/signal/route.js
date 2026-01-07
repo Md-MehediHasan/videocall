@@ -1,4 +1,3 @@
-// Simple in-memory signaling store
 let signals = {};
 
 export async function GET(req) {
