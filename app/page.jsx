@@ -110,6 +110,7 @@ export default function Page() {
         }
 
         if (msg.type === "end-call") {
+          setCallState('idle')
           endCall(false); // false = not sending signal again
         }
       }
@@ -166,11 +167,10 @@ export default function Page() {
 
   function endCall(sendSignalToOther = true) {
     localStream.current?.getTracks().forEach(track => track.stop());
-    if (pc.current) pc.current.close();
 
     if (sendSignalToOther) sendSignal("end-call", {});
 
-    setCallState("ended");
+    setCallState("idle");
     setSwapped(false);
   }
 
