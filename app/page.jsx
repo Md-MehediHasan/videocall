@@ -12,7 +12,7 @@ export default function Page() {
   const peerId = useRef(null);
 
   const [ready, setReady] = useState(false);
-  const [callState, setCallState] = useState("idle"); // idle | confirming | in-call | incoming | ended
+  const [callState, setCallState] = useState("idle"); // idle | confirming | incoming | in-call | ended
   const [incomingCaller, setIncomingCaller] = useState(null);
   const [swapped, setSwapped] = useState(false);
 
@@ -38,6 +38,7 @@ export default function Page() {
     pc.current.ontrack = (event) => {
       if (remoteVideo.current) {
         remoteVideo.current.srcObject = event.streams[0];
+        remoteVideo.current.play().catch(() => console.log("Remote autoplay blocked"));
       }
     };
 
@@ -48,13 +49,6 @@ export default function Page() {
 
     pollSignals();
   }, [ready]);
-
-  // Assign local stream to video after call starts
-  useEffect(() => {
-    if (callState === "in-call" && localVideo.current && localStream.current) {
-      localVideo.current.srcObject = localStream.current;
-    }
-  }, [callState]);
 
   // -------------------------------
   // Signaling
@@ -81,10 +75,8 @@ export default function Page() {
         if (msg.senderId === peerId.current) continue;
 
         if (msg.type === "offer") {
-          // Prevent multiple calls
-          if (callState === "in-call") continue;
-
-          setIncomingCaller(msg.senderId);
+          if (callState === "in-call") continue; // prevent multiple
+          setIncomingCaller({ id: msg.senderId, offer: msg.data });
           setCallState("incoming");
         }
 
@@ -148,10 +140,12 @@ export default function Page() {
         pc.current.addTrack(track, localStream.current)
       );
 
-      await pc.current.setRemoteDescription(incomingCaller.offer);
-      const answer = await pc.current.createAnswer();
-      await pc.current.setLocalDescription(answer);
-      sendSignal("answer", answer);
+      if (incomingCaller?.offer) {
+        await pc.current.setRemoteDescription(incomingCaller.offer);
+        const answer = await pc.current.createAnswer();
+        await pc.current.setLocalDescription(answer);
+        sendSignal("answer", answer);
+      }
 
       setIncomingCaller(null);
     } catch (err) {
@@ -161,7 +155,7 @@ export default function Page() {
   }
 
   function rejectCall() {
-    sendSignal("reject", { from: incomingCaller });
+    sendSignal("reject", { from: incomingCaller?.id });
     setIncomingCaller(null);
     setCallState("idle");
   }
@@ -171,7 +165,7 @@ export default function Page() {
     pc.current?.close();
     setCallState("ended");
     setSwapped(false);
-    window.location.reload(); // simple reset
+    window.location.reload();
   }
 
   function swapVideos() {
@@ -215,7 +209,7 @@ export default function Page() {
       {callState === "incoming" && (
         <div style={styles.overlay}>
           <div style={styles.modal}>
-            <h3>Incoming call from {incomingCaller}</h3>
+            <h3>Incoming call from {incomingCaller?.id}</h3>
             <div style={{ marginTop: 20 }}>
               <button style={styles.acceptBtn} onClick={acceptCall}>
                 ✅ Accept

@@ -1,37 +1,21 @@
-let rooms = {};
-
-export async function POST(req) {
-  const { roomId, type, data, senderId } = await req.json();
-
-  if (!roomId || !senderId) {
-    return new Response(
-      JSON.stringify({ error: "roomId and senderId required" }),
-      { status: 400 }
-    );
-  }
-
-  if (!rooms[roomId]) {
-    rooms[roomId] = [];
-  }
-
-  rooms[roomId].push({ type, data, senderId });
-
-  return new Response(JSON.stringify({ ok: true }));
-}
+// Simple in-memory signaling store
+let signals = {};
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get("roomId");
+  if (!signals[roomId]) signals[roomId] = [];
+  return new Response(JSON.stringify(signals[roomId]));
+}
 
-  if (!roomId) {
-    return new Response(
-      JSON.stringify({ error: "roomId required" }),
-      { status: 400 }
-    );
-  }
+export async function POST(req) {
+  const body = await req.json();
+  const { roomId, type, data, senderId } = body;
+  if (!signals[roomId]) signals[roomId] = [];
 
-  const messages = rooms[roomId] || [];
-  rooms[roomId] = [];
+  // Only one active call: remove old offers/answers
+  if (type === "offer") signals[roomId] = signals[roomId].filter(msg => msg.type !== "offer");
 
-  return new Response(JSON.stringify(messages));
+  signals[roomId].push({ type, data, senderId });
+  return new Response(JSON.stringify({ ok: true }));
 }
