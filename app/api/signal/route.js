@@ -4,8 +4,10 @@ let activeConnections = {}; // { roomId: [peerId1, peerId2] }
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const roomId = searchParams.get("roomId");
+  const roomId = searchParams.get("roomId")
+  const pearId= searchParams.get("pearId")
   if (!signals[roomId]) signals[roomId] = [];
+  const targetSignals= signals[roomId].filter(item=>item.senderId! =pearId)
   return new Response(JSON.stringify(signals[roomId]));
 }
 
