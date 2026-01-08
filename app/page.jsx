@@ -35,7 +35,7 @@ export default function Page() {
 
     const interval = setInterval(async () => {
       const res = await fetch(
-        `/api/signal?roomId=${roomId} selfId=${peerId.current}`
+        `/api/signal?roomId=${roomId}&selfId=${peerId.current}`
       );
       const messages = await res.json();
 
@@ -254,10 +254,10 @@ useEffect(() => {
       </div>
     </div>
   );
-  {callState=='in-call' && <InCallInterface 
+  {callState=='in-call' && (<InCallInterface 
   localvideoSrc={localStream.current} 
   remoteVideoSrc={remoteVideo}
-   endCallFunc={endCall} />}
+   endCallFunc={endCall} />)}
 }
 
 // -------------------------------
