@@ -1,42 +1,110 @@
 // server/app/api/signal/route.js
-let signals = {}; // { roomId: [msg, msg, ...] }
-let activeConnections = {}; // { roomId: [peerId1, peerId2] }
 
+let signals = {};            // { roomId: [ { type, data, senderId } ] }
+let activeConnections = {};  // { roomId: Set(peerId) }
+
+// -------------------------------
+// GET: poll signals (consume once)
+// -------------------------------
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get("roomId");
+
+  if (!roomId) {
+    return new Response(
+      JSON.stringify({ ok: false, message: "roomId required" }),
+      { status: 400 }
+    );
+  }
+
   if (!signals[roomId]) signals[roomId] = [];
-  return new Response(JSON.stringify(signals[roomId]));
+
+  // IMPORTANT: return & clear (polling-safe)
+  const roomSignals = [...signals[roomId]];
+  signals[roomId] = [];
+
+  return new Response(JSON.stringify(roomSignals), { status: 200 });
 }
 
+// -------------------------------
+// POST: send signal
+// -------------------------------
 export async function POST(req) {
-  const body = await req.json();
-  const { roomId, type, data, senderId } = body;
+  const { roomId, type, data, senderId } = await req.json();
+
+  if (!roomId || !type || !senderId) {
+    return new Response(
+      JSON.stringify({ ok: false, message: "Invalid payload" }),
+      { status: 400 }
+    );
+  }
 
   if (!signals[roomId]) signals[roomId] = [];
-  if (!activeConnections[roomId]) activeConnections[roomId] = [];
+  if (!activeConnections[roomId])
+    activeConnections[roomId] = new Set();
 
-  // Only allow one active call at a time
+  const peers = activeConnections[roomId];
+
+  // -------------------------------
+  // OFFER (only 1 active call)
+  // -------------------------------
   if (type === "offer") {
-    if (activeConnections[roomId].length > 0) {
-      return new Response(JSON.stringify({ ok: false, message: "Room busy" }));
+    if (peers.size >= 2) {
+      return new Response(
+        JSON.stringify({ ok: false, message: "Room busy" }),
+        { status: 409 }
+      );
     }
-    activeConnections[roomId].push(senderId);
-    signals[roomId] = signals[roomId].filter(msg => msg.type !== "offer"); // remove old offers
+
+    // reset stale state
+    peers.clear();
+    peers.add(senderId);
+    signals[roomId] = [];
   }
 
+  // -------------------------------
+  // ANSWER (2nd peer joins)
+  // -------------------------------
   if (type === "answer") {
-    if (!activeConnections[roomId].includes(senderId)) {
-      activeConnections[roomId].push(senderId); // second peer joins
+    if (peers.size >= 2 && !peers.has(senderId)) {
+      return new Response(
+        JSON.stringify({ ok: false, message: "Room full" }),
+        { status: 409 }
+      );
+    }
+    peers.add(senderId);
+  }
+
+  // -------------------------------
+  // ICE (only if peer is part of call)
+  // -------------------------------
+  if (type === "ice") {
+    if (!peers.has(senderId)) {
+      return new Response(
+        JSON.stringify({ ok: false, message: "Not in call" }),
+        { status: 403 }
+      );
     }
   }
 
+  // -------------------------------
+  // END CALL (cleanup)
+  // -------------------------------
   if (type === "end-call") {
-    // Remove all peers from activeConnections
-    activeConnections[roomId] = [];
-    signals[roomId] = []; // clear old messages
+    peers.clear();
+    signals[roomId] = [];
+
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
   }
 
-  signals[roomId].push({ type, data, senderId });
-  return new Response(JSON.stringify({ ok: true }));
+  // -------------------------------
+  // STORE SIGNAL
+  // -------------------------------
+  signals[roomId].push({
+    type,
+    data,
+    senderId,
+  });
+
+  return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
