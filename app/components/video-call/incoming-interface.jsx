@@ -77,7 +77,7 @@ export default function IncomingInterface({
         className="fixed inset-0 h-full w-full object-cover -z-10"
       />
 
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-8 flex w-4/5 justify-around">
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-16 sm:bottom-8 flex w-4/5 justify-around">
         {callState === 'incoming' && (
           <button
             className="bg-green-400 p-3 animate-bounce rounded-full text-white"
