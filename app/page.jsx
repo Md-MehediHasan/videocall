@@ -79,7 +79,7 @@ export default function Page() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [ready]);
+  }, [ready,pc.current]);
 
   // In the client-side React component:
 useEffect(() => {
