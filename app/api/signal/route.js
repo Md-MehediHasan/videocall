@@ -41,7 +41,7 @@ export async function GET(req) {
 // ---------------------------------
 export async function POST(req) {
   const { roomId, type, data, senderId } = await req.json();
-  console.log(data)
+
 
   if (!roomId || !type || !senderId) {
     return new Response(
