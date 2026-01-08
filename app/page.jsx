@@ -33,9 +33,9 @@ export default function Page() {
 
     const interval = setInterval(async () => {
       const res = await fetch(
-        `/api/signal?roomId=${roomId}&selfId=${peerId.current}`
+        `/api/signal?roomId=${roomId}`
       );
-      const messages = await res.json();
+      const messages = await res.json().filter(msg=>msg.senderId !==peerId.current);
 
       for (const msg of messages) {
         if (msg.type === "offer" && callState === "idle") {
