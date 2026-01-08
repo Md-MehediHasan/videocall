@@ -78,6 +78,17 @@ export default function Page() {
     return () => clearInterval(interval);
   }, [ready]);
 
+  // In the client-side React component:
+useEffect(() => {
+  if (pc.current) {
+    pc.current.ontrack = (event) => {
+      console.log("Received remote stream", event.streams[0]);
+      remoteVideo.current.srcObject = event.streams[0];
+    };
+  }
+}, [pc.current]);  // Ensure this is set only when the peer connection is initialized
+
+
   // -------------------------------
   // Send signal
   // -------------------------------
