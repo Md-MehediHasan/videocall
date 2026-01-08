@@ -40,7 +40,7 @@ export default function Page() {
       const messages = await res.json();
 
       for (const msg of messages) {
-        if (msg.type === "offer") {
+        if (msg.type === "offer" && msg.senderId! == peerId.current) {
          
           setIncomingCaller({ id: msg.senderId, offer: msg.data });
           setCallState("incoming");
@@ -79,7 +79,7 @@ export default function Page() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [ready,pc.current]);
+  }, [ready]);
 
   // In the client-side React component:
 useEffect(() => {
