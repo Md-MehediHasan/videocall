@@ -40,7 +40,8 @@ export default function Page() {
       const messages = await res.json();
 
       for (const msg of messages) {
-        if (msg.type === "offer" && callState === "idle") {
+        if (msg.type === "offer") {
+         
           setIncomingCaller({ id: msg.senderId, offer: msg.data });
           setCallState("incoming");
         }
