@@ -102,7 +102,10 @@ export default function Page() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
+    // Handle incoming remote streams
     pc.current.ontrack = (e) => {
+      console.log("Received remote stream", e.streams[0]);
+      // Ensure remoteVideo element is updated with the remote stream
       remoteVideo.current.srcObject = e.streams[0];
     };
 
