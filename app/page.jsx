@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import IncomingInterface from "./components/video-call/incoming-interface";
+import InCallInterface from "./components/video-call/inCallInterface";
 
 export default function Page() {
   const localVideo = useRef(null);
@@ -33,7 +35,7 @@ export default function Page() {
 
     const interval = setInterval(async () => {
       const res = await fetch(
-        `/api/signal?roomId=${roomId}`
+        `/api/signal?roomId=${roomId} selfId=${peerId.current}`
       );
       const messages = await res.json();
 
@@ -208,25 +210,26 @@ useEffect(() => {
   if (!ready) return <div>Initializing…</div>;
 
   return (
-    <div style={{ padding: 20, fontFamily: "Arial" }}>
-      <h1>WebRTC Video Call</h1>
+    <div className=" flex items-center justify-center overflow-hidden" style={{ padding: 20, fontFamily: "Arial" }}>
+      <div className="h-screen w-screen overflow-hidden">
+     {callState=='idle' && <h1 className="text-3xl text-green-800 text-center my-8">BanConnect Calling</h1>}
 
       {/* Idle state */}
       {callState === "idle" && (
-        <button style={styles.callBtn} onClick={startCall}>
+        <button className="block mx-auto text-center bg-green-600 hover:bg-green-800 transition-colors duration-300 rounded-sm px-2 py-1" onClick={startCall}>
           📞 Start Call
         </button>
       )}
 
       {/* Confirm outgoing call */}
       {callState === "confirming" && (
-        <div style={styles.overlay}>
-          <div style={styles.modal}>
-            <h3>Start the call?</h3>
-            <button style={styles.acceptBtn} onClick={confirmCall}>
-              Call
+        <div className="border border-green-300 px-12 py-8 shadow-sm shadow-emerald-500 rounded-sm">
+            <h3 className="text-center text-2xl text-slate-600">Are You Sure To Start a Call</h3>
+          <div className="flex space-x-8 justify-center mt-8">
+            <button className="block text-xl bg-green-500 px-2 py-1 rounded-sm hover:bg-green-600  transition-colors duration-300"  onClick={confirmCall}>
+            📞 Call
             </button>
-            <button style={styles.rejectBtn} onClick={() => setCallState("idle")}>
+            <button className="block text-xl bg-red-500 px-2 py-1 rounded-sm hover:bg-red-600  transition-colors duration-300"  onClick={() => setCallState("idle")}>
               Cancel
             </button>
           </div>
@@ -234,52 +237,26 @@ useEffect(() => {
       )}
 
       {/* Incoming call popup */}
-      {callState === "incoming" && incomingCaller && (
-        <div style={styles.overlay}>
-          <div style={styles.modal}>
-            <h3>Incoming call from {incomingCaller.id}</h3>
-            <button style={styles.acceptBtn} onClick={acceptCall}>
-              Accept
-            </button>
-            <button style={styles.rejectBtn} onClick={rejectCall}>
-              Reject
-            </button>
-          </div>
-        </div>
-      )}
+    
 
       {/* In-call UI */}
-      {(callState === "in-call" || callState === "outgoing") && (
-        <div style={styles.callContainer}>
-          {/* Remote video */}
-          <video
-            ref={remoteVideo}
-            autoPlay
-            playsInline
-            style={swapped ? styles.localVideo : styles.remoteVideo}
-          />
-
-          {/* Local video */}
-          <video
-            ref={localVideo}
-            autoPlay
-            muted
-            playsInline
-            style={swapped ? styles.remoteVideo : styles.localVideo}
-          />
-
-          <div style={styles.controls}>
-            <button style={styles.iconBtn} onClick={swapVideos}>
-              🔄
-            </button>
-            <button style={styles.iconBtn} onClick={() => endCall(true)}>
-              ❌
-            </button>
-          </div>
-        </div>
+      {(callState === "incoming" || callState === "outgoing") && (
+        
+     <IncomingInterface 
+     callState={callState}
+     videoSrc={localVideo}
+      username={"Md. Mehedi"} 
+      endCallFunc={endCall}
+       acceptCallFunc={acceptCall} 
+       messageFunc={null}/>
       )}
+      </div>
     </div>
   );
+  {callState=='in-call' && <InCallInterface 
+  localvideoSrc={localStream.current} 
+  remoteVideoSrc={remoteVideo}
+   endCallFunc={endCall} />}
 }
 
 // -------------------------------
