@@ -13,8 +13,7 @@ export default function Page() {
   const peerId = useRef(null);
 
   const [ready, setReady] = useState(false);
-  const [callState, setCallState] = useState("idle"); 
-  // idle | confirming | incoming | in-call
+  const [callState, setCallState] = useState("idle"); // idle | confirming | incoming | in-call | outgoing
   const [incomingCaller, setIncomingCaller] = useState(null);
   const [swapped, setSwapped] = useState(false);
 
@@ -27,44 +26,46 @@ export default function Page() {
   }, []);
 
   // -------------------------------
-  // Poll signaling server (SAFE)
+  // Poll signaling server
   // -------------------------------
   useEffect(() => {
     if (!ready) return;
 
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/signal?roomId=${roomId}`);
+      const res = await fetch(
+        `/api/signal?roomId=${roomId}&selfId=${peerId.current}`
+      );
       const messages = await res.json();
 
       for (const msg of messages) {
-        if (msg.senderId === peerId.current) continue;
-
-        if (msg.type === "offer") {
-          if (callState !== "idle") continue;
+        if (msg.type === "offer" && callState === "idle") {
           setIncomingCaller({ id: msg.senderId, offer: msg.data });
           setCallState("incoming");
         }
 
-        if (msg.type === "answer") {
-          if (pc.current?.signalingState === "have-local-offer") {
-            await pc.current.setRemoteDescription(msg.data);
+        if (
+          msg.type === "answer" &&
+          pc.current?.signalingState === "have-local-offer"
+        ) {
+          await pc.current.setRemoteDescription(msg.data);
 
-            for (const c of pendingCandidates.current) {
-              await pc.current.addIceCandidate(c);
-            }
-            pendingCandidates.current = [];
+          // Add any pending ICE candidates
+          for (const c of pendingCandidates.current) {
+            await pc.current.addIceCandidate(c);
           }
+          pendingCandidates.current = [];
+          setCallState("in-call");
         }
 
         if (msg.type === "ice") {
           if (pc.current?.remoteDescription) {
             try {
               await pc.current.addIceCandidate(msg.data);
-            } 
-             catch {}
-          }
-          else {
-              pendingCandidates.current.push(msg.data);
+            } catch (err) {
+              console.error("ICE error:", err);
+            }
+          } else {
+            pendingCandidates.current.push(msg.data);
           }
         }
 
@@ -75,10 +76,10 @@ export default function Page() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [ready, callState]);
+  }, [ready]);
 
   // -------------------------------
-  // Signaling
+  // Send signal
   // -------------------------------
   async function sendSignal(type, data) {
     await fetch("/api/signal", {
@@ -94,20 +95,18 @@ export default function Page() {
   }
 
   // -------------------------------
-  // PeerConnection
+  // Create PeerConnection
   // -------------------------------
   function createPeerConnection() {
     pc.current = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    pc.current.ontrack = e => {
-      if (remoteVideo.current) {
-        remoteVideo.current.srcObject = e.streams[0];
-      }
+    pc.current.ontrack = (e) => {
+      remoteVideo.current.srcObject = e.streams[0];
     };
 
-    pc.current.onicecandidate = e => {
+    pc.current.onicecandidate = (e) => {
       if (e.candidate) sendSignal("ice", e.candidate);
     };
   }
@@ -120,17 +119,16 @@ export default function Page() {
   }
 
   async function confirmCall() {
-    setCallState("in-call");
+    setCallState("outgoing");
     createPeerConnection();
     await startLocalStream();
 
     const offer = await pc.current.createOffer();
     await pc.current.setLocalDescription(offer);
-    sendSignal("offer", offer);
+    await sendSignal("offer", offer);
   }
 
   async function acceptCall() {
-    setCallState("in-call");
     createPeerConnection();
     await startLocalStream();
 
@@ -138,13 +136,15 @@ export default function Page() {
 
     const answer = await pc.current.createAnswer();
     await pc.current.setLocalDescription(answer);
-    sendSignal("answer", answer);
+    await sendSignal("answer", answer);
 
+    // Add pending ICE candidates
     for (const c of pendingCandidates.current) {
       await pc.current.addIceCandidate(c);
     }
     pendingCandidates.current = [];
 
+    setCallState("in-call");
     setIncomingCaller(null);
   }
 
@@ -163,13 +163,13 @@ export default function Page() {
       localVideo.current.srcObject = localStream.current;
     }
 
-    localStream.current.getTracks().forEach(track =>
-      pc.current.addTrack(track, localStream.current)
-    );
+    localStream.current.getTracks().forEach((track) => {
+      pc.current.addTrack(track, localStream.current);
+    });
   }
 
   function endCall(sendSignalToOther = true) {
-    localStream.current?.getTracks().forEach(t => t.stop());
+    localStream.current?.getTracks().forEach((t) => t.stop());
     localStream.current = null;
 
     if (pc.current) {
@@ -180,82 +180,87 @@ export default function Page() {
     pendingCandidates.current = [];
 
     if (sendSignalToOther) sendSignal("end-call", {});
-
     setCallState("idle");
     setSwapped(false);
   }
 
   function swapVideos() {
-    setSwapped(s => !s);
+    setSwapped(!swapped);
   }
 
   // -------------------------------
-  // Render (UNCHANGED STYLING)
+  // UI
   // -------------------------------
-  if (!ready) return <div style={{ padding: 20 }}>Initializing…</div>;
+  if (!ready) return <div>Initializing…</div>;
 
   return (
     <div style={{ padding: 20, fontFamily: "Arial" }}>
-      <h1>Professional WebRTC Call</h1>
+      <h1>WebRTC Video Call</h1>
 
+      {/* Idle state */}
       {callState === "idle" && (
         <button style={styles.callBtn} onClick={startCall}>
           📞 Start Call
         </button>
       )}
 
+      {/* Confirm outgoing call */}
       {callState === "confirming" && (
         <div style={styles.overlay}>
           <div style={styles.modal}>
             <h3>Start the call?</h3>
-            <div style={{ marginTop: 20 }}>
-              <button style={styles.acceptBtn} onClick={confirmCall}>
-                ✅ Call
-              </button>
-              <button
-                style={styles.rejectBtn}
-                onClick={() => setCallState("idle")}
-              >
-                ❌ Cancel
-              </button>
-            </div>
+            <button style={styles.acceptBtn} onClick={confirmCall}>
+              Call
+            </button>
+            <button style={styles.rejectBtn} onClick={() => setCallState("idle")}>
+              Cancel
+            </button>
           </div>
         </div>
       )}
 
-      {callState === "incoming" && (
+      {/* Incoming call popup */}
+      {callState === "incoming" && incomingCaller && (
         <div style={styles.overlay}>
           <div style={styles.modal}>
-            <h3>Incoming call</h3>
-            <div style={{ marginTop: 20 }}>
-              <button style={styles.acceptBtn} onClick={acceptCall}>
-                ✅ Accept
-              </button>
-              <button style={styles.rejectBtn} onClick={rejectCall}>
-                ❌ Reject
-              </button>
-            </div>
+            <h3>Incoming call from {incomingCaller.id}</h3>
+            <button style={styles.acceptBtn} onClick={acceptCall}>
+              Accept
+            </button>
+            <button style={styles.rejectBtn} onClick={rejectCall}>
+              Reject
+            </button>
           </div>
         </div>
       )}
 
-      {callState === "in-call" && (
+      {/* In-call UI */}
+      {(callState === "in-call" || callState === "outgoing") && (
         <div style={styles.callContainer}>
-          {swapped ? (
-            <>
-              <video ref={localVideo} autoPlay muted playsInline style={styles.remoteVideo} />
-              <video ref={remoteVideo} autoPlay playsInline style={styles.localVideo} />
-            </>
-          ) : (
-            <>
-              <video ref={remoteVideo} autoPlay playsInline style={styles.remoteVideo} />
-              <video ref={localVideo} autoPlay muted playsInline style={styles.localVideo} />
-            </>
-          )}
+          {/* Remote video */}
+          <video
+            ref={remoteVideo}
+            autoPlay
+            playsInline
+            style={swapped ? styles.localVideo : styles.remoteVideo}
+          />
+
+          {/* Local video */}
+          <video
+            ref={localVideo}
+            autoPlay
+            muted
+            playsInline
+            style={swapped ? styles.remoteVideo : styles.localVideo}
+          />
 
           <div style={styles.controls}>
-            <button style={styles.iconBtn} onClick={swapVideos}>🔄</button>
-            <button style={styles.iconBtn} onClick={() => endCall(true)}>❌</button>
+            <button style={styles.iconBtn} onClick={swapVideos}>
+              🔄
+            </button>
+            <button style={styles.iconBtn} onClick={() => endCall(true)}>
+              ❌
+            </button>
           </div>
         </div>
       )}
@@ -264,89 +269,45 @@ export default function Page() {
 }
 
 // -------------------------------
-// Styles (UNCHANGED)
+// Styles
 // -------------------------------
 const styles = {
-  callBtn: {
-    backgroundColor: "greenyellow",
-    padding: "10px 20px",
-    fontSize: 16,
-    cursor: "pointer",
-    borderRadius: 6,
-  },
+  callBtn: { padding: 12, fontSize: 16, cursor: "pointer" },
   overlay: {
     position: "fixed",
     inset: 0,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    background: "rgba(0,0,0,.6)",
     display: "flex",
-    alignItems: "center",
     justifyContent: "center",
-    zIndex: 1000,
+    alignItems: "center",
   },
   modal: {
     background: "#fff",
-    padding: 30,
-    borderRadius: 12,
-    textAlign: "center",
-    width: 320,
-    boxShadow: "0px 4px 12px rgba(0,0,0,0.3)",
+    padding: 20,
+    borderRadius: 10,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
   },
-  acceptBtn: {
-    backgroundColor: "#28a745",
-    color: "white",
-    padding: "10px 20px",
-    marginRight: 12,
-    cursor: "pointer",
-    borderRadius: 6,
-    fontWeight: "bold",
-  },
-  rejectBtn: {
-    backgroundColor: "#dc3545",
-    color: "white",
-    padding: "10px 20px",
-    cursor: "pointer",
-    borderRadius: 6,
-    fontWeight: "bold",
-  },
+  acceptBtn: { background: "green", color: "#fff", padding: 8, width: 100 },
+  rejectBtn: { background: "red", color: "#fff", padding: 8, width: 100 },
   callContainer: {
     position: "relative",
-    width: "100%",
-    maxWidth: 900,
+    width: 900,
     height: 500,
-    backgroundColor: "#000",
-    marginTop: 20,
-    borderRadius: 12,
-    overflow: "hidden",
+    background: "#000",
   },
-  remoteVideo: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-  },
+  remoteVideo: { width: "100%", height: "100%", objectFit: "cover" },
   localVideo: {
     position: "absolute",
     bottom: 20,
     right: 20,
-    width: 180,
-    height: 135,
+    width: 200,
+    height: 150,
     border: "2px solid white",
-    borderRadius: 8,
     objectFit: "cover",
   },
-  controls: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    display: "flex",
-    gap: 12,
-  },
-  iconBtn: {
-    backgroundColor: "rgba(255,255,255,0.3)",
-    border: "none",
-    borderRadius: 8,
-    color: "white",
-    fontSize: 22,
-    padding: "8px 12px",
-    cursor: "pointer",
-  },
+  controls: { position: "absolute", top: 20, right: 20, display: "flex", gap: 10 },
+  iconBtn: { fontSize: 20, cursor: "pointer", background: "#fff", borderRadius: 5 },
 };
