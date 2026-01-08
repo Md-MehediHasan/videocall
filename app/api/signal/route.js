@@ -1,5 +1,3 @@
-// app/api/signal/route.js
-
 // In-memory signal store
 // {
 //   roomId: [
@@ -14,7 +12,8 @@ let signals = {};
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get("roomId");
- 
+  const selfId = searchParams.get("selfId");  // Pass selfId to filter out own messages
+
   if (!roomId) {
     return new Response(
       JSON.stringify({ ok: false, message: "roomId required" }),
@@ -25,12 +24,14 @@ export async function GET(req) {
   if (!signals[roomId]) signals[roomId] = [];
 
   // If selfId is provided, filter out own messages
- 
+  const outgoing = selfId
+    ? signals[roomId].filter(msg => msg.senderId !== selfId)
+    : [...signals[roomId]];
 
   // Consume signals once (polling-safe)
+  signals[roomId] = [];
 
-
-  return new Response(JSON.stringify(signals[roomId]), { status: 200 });
+  return new Response(JSON.stringify(outgoing), { status: 200 });
 }
 
 // ---------------------------------
@@ -38,7 +39,6 @@ export async function GET(req) {
 // ---------------------------------
 export async function POST(req) {
   const { roomId, type, data, senderId } = await req.json();
-
 
   if (!roomId || !type || !senderId) {
     return new Response(
@@ -49,6 +49,7 @@ export async function POST(req) {
 
   if (!signals[roomId]) signals[roomId] = [];
 
+  // Store the new signal
   signals[roomId].push({
     type,
     data,
