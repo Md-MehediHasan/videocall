@@ -35,7 +35,7 @@ export default function Page() {
       const res = await fetch(
         `/api/signal?roomId=${roomId}`
       );
-      const messages = await res.json().filter(msg=>msg.senderId !==peerId.current);
+      const messages = await res.json();
 
       for (const msg of messages) {
         if (msg.type === "offer" && callState === "idle") {
@@ -82,7 +82,7 @@ export default function Page() {
 useEffect(() => {
   if (pc.current) {
     pc.current.ontrack = (event) => {
-      console.log("Received remote stream", event.streams[0]);
+    
       remoteVideo.current.srcObject = event.streams[0];
     };
   }
