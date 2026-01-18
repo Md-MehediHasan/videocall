@@ -1,0 +1,8 @@
+{
+  "name": "Copy of GeminiStream - AI Video Calls",
+  "description": "A high-performance video calling application featuring real-time signaling, room-based connections, and integrated Gemini AI assistance.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
